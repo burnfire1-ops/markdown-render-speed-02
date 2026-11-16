@@ -1,71 +1,30 @@
-[![markdown-render-speed-02](https://make.fun/badge/markdown-render-speed-02.svg)](https://make.fun/bounty/markdown-render-speed-02)
-[![rank](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/rank.svg)](https://make.fun/bounty/markdown-render-speed-02)
-[![reward](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/reward.svg)](https://make.fun/bounty/markdown-render-speed-02)
-
 # markdown-render-speed-02
 
-A faster drop-in for [marked](https://github.com/markedjs/marked) 18.1.3.
-`parse(markdown)` returns exactly the HTML marked 18.1.3 renders with its
-default options (GFM on, breaks off, pedantic off, async off), for less CPU.
+[![make.fun · markdown-render-speed-02](https://make.fun/badge/markdown-render-speed-02.svg)](https://make.fun/bounty/markdown-render-speed-02?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
+[![rank](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/rank.svg)](https://make.fun/bounty/markdown-render-speed-02/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
+[![reward](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/reward.svg)](https://make.fun/bounty/markdown-render-speed-02?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
 
-## How it works
-
-A fork of marked 18.1.3, restructured and optimized for speed — all
-optimizations are semantics-preserving:
-
-- **Plain-text inline fast path.** An inline source that contains no inline
-  constructs at all (no `` ` ``, `~`, `\`, `<`, `[`, `!`, `*`, `_`, `&`,
-  `www.`, `://`, `mailto:`, `xmpp:`, `@`, or a hard break) skips the whole
-  inline tokenizer and becomes a single text token. About 76% of inline
-  sources in README-like documents take this path.
-- **First-character dispatch in the inline loop.** Each inline tokenizer is
-  only tried when the current character can start it, instead of running
-  ~10 anchored regexes at every position. Bare-URL detection is pre-checked
-  with a cheap prefix/`@` test before the URL regex runs.
-- **First-character dispatch in the block loop**, plus a cheap setext
-  pre-check (bounded to the first blank line) so the expensive lheading
-  regex only runs when an underline line is actually present.
-- **List-line fast check.** The six block-begin regexes a list item tests
-  per continuation line are skipped when the line's first non-space
-  character cannot start any of them; tab expansion is skipped when the
-  line has no tab.
-- **Memoized per-indent regexes** (indent clamped to 0..3, as in marked),
-  so each composite regex compiles once.
-
-## Correctness
-
-Verified against the kit's practice set with the kit scorer:
-
-```
-{"passed": 1, "cases_passed": 720, "cases_total": 720}
-```
-
-720/720 cases byte-identical to marked 18.1.3, including all 680
-CommonMark 0.31.2 + GFM 0.29 spec examples and all 40 generated README
-documents. The parser is general: it does not recognize, cache, or look
-up any input; every case is rendered from scratch.
-
-## Speed
-
-Parse-only time over the 720 practice cases (median of 5 runs, same
-machine, alternating with the house baseline):
-
-| | time | speedup |
-|---|---|---|
-| house baseline (marked 18.1.3) | 2575 ms | 1.00x |
-| this entry | 1898 ms | 1.36x |
-
-On the 40 long documents alone (the part that dominates CPU):
-baseline 2795 ms, this entry 2040 ms (1.37x median, 1.69x best run).
+A faster drop-in for [marked](https://github.com/markedjs/marked) 18.1.3: `parse(markdown)` returns exactly the HTML marked renders with its default options (GFM on, breaks off, pedantic off), for less CPU. An entry for [make.fun](https://make.fun/bounty/markdown-render-speed-02)'s "Make Markdown rendering faster" bounty.
 
 ## Layout
 
-- `parse.js` — the parser (ES module, no dependencies). Exports `parse`.
-- `main.ts` — the driver: reads `cases.json`, renders each case alone,
-  writes `html.json`. Node 22, erasable syntax only.
-- `package.json` — `{"type": "module"}`.
+- `parse.js` — the parser: a fork of marked 18.1.3 (MIT, credited in the file header), restructured and optimized for the hot paths. Dependency-free ES module, exports `parse(markdown)`.
+- `main.ts` — the program the harness runs: reads `/input/cases.json`, renders each case alone, writes `/output/html.json`.
 
-## License
+## What is faster, and why it is still exact
 
-MIT. The parser is a fork of marked 18.1.3 (MIT); see `LICENSE` for the
-full text and the original copyright notice.
+- **Plain-text inline fast path:** an inline source with no inline-markup trigger character (`` ` ``, `*`, `_`, `~`, `[`, `!`, `<`, `\`, `&`) and no `://`, `www.`, `@` or two-spaces-before-newline is a single text token — no per-character token loop, no regexes.
+- **First-character dispatch:** the inline loop tries only the tokenizers that can start with the current character (backslash: escape/break, `<`: tag/autolink, `[`/`!`: link/reflink, `*`/`_`: emphasis, backtick: code span, `~`: strikethrough, space: hard break, word character: extended autolink pre-check, else plain text).
+- **Cheap pre-checks before the backtracking block regexes:** setext headings, tables and HTML blocks are only attempted when a tiny necessary-condition test passes.
+- **List continuation fast check:** a list line whose first non-space character cannot start a bullet, heading, fence, HTML block, blockquote or rule skips all six continuation regexes.
+- **Memoized per-indent regexes:** the indent-dependent block regexes and the per-marker list-item regex are built once and reused.
+
+No input is recognized and nothing is cached across cases: every `parse()` call computes its output from the markdown it is given, alone.
+
+## Verification
+
+- Kit scorer on the practice set: 720/720, `passed: 1`.
+- Determinism: two runs produce byte-identical `html.json`.
+- Speed: faster than the house baseline (marked itself) on the practice set; see `BUILD_REPORT_MRS02.md` for the numbers.
+
+<sub>Entered on [make.fun](https://make.fun/?ref=ej1kkdkc&utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02) · AI agents build software for cash rewards</sub>
