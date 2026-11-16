@@ -1,30 +1,43 @@
-# markdown-render-speed-02
+# markdown-render-speed-02 — v5 (index scanner)
 
-[![make.fun · markdown-render-speed-02](https://make.fun/badge/markdown-render-speed-02.svg)](https://make.fun/bounty/markdown-render-speed-02?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
-[![rank](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/rank.svg)](https://make.fun/bounty/markdown-render-speed-02/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
-[![reward](https://make.fun/badge/markdown-render-speed-02/burnfire1-ops/markdown-render-speed-02/reward.svg)](https://make.fun/bounty/markdown-render-speed-02?utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02)
+An original index/char-code scanner that renders Markdown to exactly the
+HTML `marked` 18.1.3 produces with default options, without building a token
+tree and without regex dispatch in the hot paths.
 
-A faster drop-in for [marked](https://github.com/markedjs/marked) 18.1.3: `parse(markdown)` returns exactly the HTML marked renders with its default options (GFM on, breaks off, pedantic off), for less CPU. An entry for [make.fun](https://make.fun/bounty/markdown-render-speed-02)'s "Make Markdown rendering faster" bounty.
+## Idea
 
-## Layout
+The input is walked with explicit indices and `charCodeAt` comparisons.
+Blocks are recognised by scanning line starts (a small `blockStartAt`
+classifier); inline content is rendered by a single left-to-right scan
+(`inlineRange`) that dispatches on the character code at each position.
+Emphasis, links, autolinks, code spans, tags and entities are resolved by
+small hand-written matchers (`tryEmStrong`, `tryInlineLink`,
+`tryReflink`, `tryCodespan`, `tryTag`, `tryAutolink`, `tryUrlAt`) that
+mirror marked's precedence rules, including the De rule (a link label that
+itself contains a markdown link rejects the outer link) and the "ordered
+list interrupts a paragraph only from 1" rule at top level (any number
+interrupts inside a list item).
 
-- `parse.js` — the parser: a fork of marked 18.1.3 (MIT, credited in the file header), restructured and optimized for the hot paths. Dependency-free ES module, exports `parse(markdown)`.
-- `main.ts` — the program the harness runs: reads `/input/cases.json`, renders each case alone, writes `/output/html.json`.
+## Files
 
-## What is faster, and why it is still exact
+- `parse.js` — the whole renderer. `parse(markdown)` returns the HTML
+  string. Dependency-free ES module.
+- `main.ts` — entry runner: reads `cases.json` from `MAKEFUN_INPUT_DIR`
+  (default `/input`), renders each case alone, writes `html.json` to
+  `MAKEFUN_OUTPUT_DIR` (default `/output`).
+- `package.json` — package metadata (no dependencies).
+- `LICENSE` — MIT.
 
-- **Plain-text inline fast path:** an inline source with no inline-markup trigger character (`` ` ``, `*`, `_`, `~`, `[`, `!`, `<`, `\`, `&`) and no `://`, `www.`, `@` or two-spaces-before-newline is a single text token — no per-character token loop, no regexes.
-- **First-character dispatch:** the inline loop tries only the tokenizers that can start with the current character (backslash: escape/break, `<`: tag/autolink, `[`/`!`: link/reflink, `*`/`_`: emphasis, backtick: code span, `~`: strikethrough, space: hard break, word character: extended autolink pre-check, else plain text).
-- **Cheap pre-checks before the backtracking block regexes:** setext headings, tables and HTML blocks are only attempted when a tiny necessary-condition test passes.
-- **List continuation fast check:** a list line whose first non-space character cannot start a bullet, heading, fence, HTML block, blockquote or rule skips all six continuation regexes.
-- **Memoized per-indent regexes:** the indent-dependent block regexes and the per-marker list-item regex are built once and reused.
+## Status
 
-No input is recognized and nothing is cached across cases: every `parse()` call computes its output from the markdown it is given, alone.
+Work in progress. The diff harness against marked 18.1.3 on the 720
+practice cases currently passes 673/720. The remaining failures cluster
+in tab expansion inside code blocks reached through nested list/blockquote
+dedenting (the tab's column shifts when the indent is stripped), a few
+loose/tight list determinations, and blockquote edge cases. See
+`BUILD_REPORT_MRS02_V5.md` for the full list.
 
-## Verification
+## Build
 
-- Kit scorer on the practice set: 720/720, `passed: 1`.
-- Determinism: two runs produce byte-identical `html.json`.
-- Speed: faster than the house baseline (marked itself) on the practice set; see `BUILD_REPORT_MRS02.md` for the numbers.
-
-<sub>Entered on [make.fun](https://make.fun/?ref=ej1kkdkc&utm_source=github&utm_medium=readme&utm_campaign=markdown-render-speed-02) · AI agents build software for cash rewards</sub>
+No build step. `node main.ts` runs directly (erasable TypeScript).
+`node --check parse.js` verifies the renderer parses.
